@@ -64,7 +64,7 @@ jobs:
           mkdir -p "$STORY_DIR"
           mv index.yaml "$STORY_DIR/index.yaml"
 
-      # 5️⃣ Download images from issue
+      # 5️⃣ Download images from issue (FIXED)
       - name: Download images from issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -74,15 +74,19 @@ jobs:
           ISSUE_NUMBER=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
           STORY_DIR="stories/${{ steps.slug.outputs.slug }}"
 
+          # Extract ALL URLs from issue body (GitHub uses multiple domains now)
           gh issue view "$ISSUE_NUMBER" --json body -q '.body' \
-            | grep -oE 'https://user-images.githubusercontent.com[^)]+' \
+            | grep -oE 'https://[^ )"]+' \
             | while read -r url; do
                 echo "Downloading $url"
-                curl -sSL "$url" -O
+                curl -sSL "$url" -O || true
               done
 
+          # Keep only image files
           shopt -s nullglob
           IMAGES=( *.png *.jpg *.jpeg *.webp )
+
+          echo "Found ${#IMAGES[@]} image(s)"
 
           if [ ${#IMAGES[@]} -lt 2 ]; then
             echo "❌ Less than 2 images uploaded"
@@ -112,7 +116,7 @@ jobs:
             --body "Auto-generated from issue #$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")" \
             --base main
 
-      # 8️⃣ Comment PR link
+      # 8️⃣ Comment PR link on issue
       - name: Comment PR link on issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
