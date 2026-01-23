@@ -1,0 +1,52 @@
+map:
+  authored_by: Vatsal
+  location: India
+  industries:
+    - Software
+    - Cloud Computing
+  geojson: '{"type":"Point","coordinates":[116.4074,39.9042]}'
+metadata:
+  title: Jenkins is the way
+  organization: Jenkins
+  industries:
+    - Software
+    - Cloud Computing
+  programming_languages:
+    - java
+    - rust
+    - goLang
+    - c ++
+  platforms:
+    - docker
+    - kubernetes
+    - Jenkins
+  version_control_systems:
+    - Git
+    - Github
+  build_tools:
+    - Maven
+    - Gradel
+  community_supports:
+    - Jenkins.io
+    - stories.jenkins.io & blogs
+body_content:
+  title: Jenkins is the way
+  paragraphs:
+    - |-
+      hejkrhfjherjkhejrhfjehrfje
+      ejkrfhjehrfjherjfkrhejkfehjfhjerhfj
+      jerhfjkhejf
+    - ejrhfjehfjkhejfhejf
+    - erjfhjkehfjkehjfhejhfjehrfjhejrhfjkerjfhjerhjjberjcvberjkcjenr
+title: Jenkins is the way
+date: '2026-01-23T14:33:42.071Z'
+authored_by: Vatsal
+image: 12.png
+tag_line: Jenkins is everything
+quotes:
+  - from: Jenkins is everything
+    content: |-
+      jqjwkebhfqwkebfjwbjkcbweuihu4hwiehc
+      jebjbwejkcbwejkhjkwehjk
+    image: ./14.png
+
