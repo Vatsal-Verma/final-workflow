@@ -16,10 +16,10 @@ jobs:
 
     steps:
       # 1️⃣ Checkout main explicitly
-      - name: Checkout main
+      - name: Checkout master
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: master
 
       # 2️⃣ Extract YAML from issue
       - name: Extract YAML from issue
