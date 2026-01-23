@@ -15,7 +15,7 @@ jobs:
       issues: write
 
     steps:
-      # 1️⃣ Checkout main explicitly
+      # 1️⃣ Checkout master explicitly
       - name: Checkout master
         uses: actions/checkout@v4
         with:
@@ -52,7 +52,7 @@ jobs:
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
-      # 4️⃣ Detect if story already exists in main
+      # 4️⃣ Detect if story already exists in master
       - name: Check if story already exists
         id: exists
         run: |
@@ -69,30 +69,32 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh issue comment \
-            $(jq -r '.issue.number' "$GITHUB_EVENT_PATH") \
-            --body "⚠️ A story with this title already exists in `main`. No pull request was created."
+            ${{ github.event.issue.number }} \
+            --body "⚠️ A story with this title already exists in \`master\`. No pull request was created."
           exit 0
 
       # 6️⃣ Create branch ONLY when needed
       - name: Create branch
+        if: steps.exists.outputs.exists == 'false'
         run: |
           git checkout -b "${{ steps.names.outputs.branch }}"
 
       # 7️⃣ Create story directory
       - name: Create story directory
+        if: steps.exists.outputs.exists == 'false'
         run: |
           mkdir -p "stories/${{ steps.names.outputs.slug }}"
           mv index.yaml "stories/${{ steps.names.outputs.slug }}/index.yaml"
 
       # 8️⃣ Download images (optional)
       - name: Download images
+        if: steps.exists.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ISSUE_NUMBER=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
           STORY_DIR="stories/${{ steps.names.outputs.slug }}"
 
-          gh issue view "$ISSUE_NUMBER" --json body -q '.body' \
+          gh issue view ${{ github.event.issue.number }} --json body -q '.body' \
             | grep -oE 'https://[^ )"]+' \
             | while read -r url; do
                 curl -L -H "Authorization: Bearer $GH_TOKEN" -OJ "$url" || true
@@ -104,12 +106,14 @@ jobs:
 
       # 9️⃣ Configure git
       - name: Configure git
+        if: steps.exists.outputs.exists == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       # 🔟 Commit & push
       - name: Commit and push
+        if: steps.exists.outputs.exists == 'false'
         run: |
           git add stories/${{ steps.names.outputs.slug }}
           git commit -m "Add story: ${{ steps.names.outputs.slug }}"
@@ -117,21 +121,23 @@ jobs:
 
       # 1️⃣1️⃣ Open PR (guaranteed diff)
       - name: Open Pull Request
+        if: steps.exists.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh pr create \
             --title "Add story: ${{ steps.names.outputs.slug }}" \
-            --body "Auto-generated from issue #$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")" \
+            --body "Auto-generated from issue #${{ github.event.issue.number }}" \
             --head "${{ steps.names.outputs.branch }}" \
-            --base main
+            --base master
 
       # 1️⃣2️⃣ Comment success
       - name: Comment PR link
+        if: steps.exists.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_URL=$(gh pr view --json url -q .url)
           gh issue comment \
-            $(jq -r '.issue.number' "$GITHUB_EVENT_PATH") \
+            ${{ github.event.issue.number }} \
             --body "✅ Pull request created: $PR_URL"
