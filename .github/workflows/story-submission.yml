@@ -93,16 +93,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           STORY_DIR="stories/${{ steps.names.outputs.slug }}"
+          cd "$STORY_DIR"
 
           gh issue view ${{ github.event.issue.number }} --json body -q '.body' \
-            | grep -oE 'https://[^ )"]+' \
+            | grep -oE 'https://[^ )"]+\.(png|jpg|jpeg|gif|webp|svg)' \
             | while read -r url; do
-                curl -L -H "Authorization: Bearer $GH_TOKEN" -OJ "$url" || true
+                echo "Downloading: $url"
+                curl -L -H "Authorization: Bearer $GH_TOKEN" -O "$url" || true
               done
 
-          shopt -s nullglob
-          IMAGES=( *.png *.jpg *.jpeg *.webp )
-          [ ${#IMAGES[@]} -gt 0 ] && mv "${IMAGES[@]}" "$STORY_DIR/" || true
+          # Also check for GitHub user-attachments URLs
+          gh issue view ${{ github.event.issue.number }} --json body -q '.body' \
+            | grep -oE 'https://github\.com/user-attachments/assets/[a-zA-Z0-9-]+' \
+            | while read -r url; do
+                echo "Downloading attachment: $url"
+                curl -L -H "Authorization: Bearer $GH_TOKEN" -O "$url" || true
+              done
+
+          ls -la
 
       # 9️⃣ Configure git
       - name: Configure git
