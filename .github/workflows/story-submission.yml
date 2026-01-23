@@ -1,4 +1,4 @@
-name: Story Submission → PR
+name: Story Submission → Create PR
 
 on:
   issues:
@@ -15,24 +15,31 @@ jobs:
       issues: write
 
     steps:
+      # 1️⃣ Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2️⃣ Extract YAML safely from issue body
       - name: Extract YAML from issue
-        id: extract_yaml
         run: |
-          BODY="${{ github.event.issue.body }}"
+          set -e
 
-          echo "$BODY" | sed -n '/```yaml/,/```/p' | sed '1d;$d' > story.yaml
+          echo "${{ github.event.issue.body }}" > issue.md
 
-          if [ ! -s story.yaml ]; then
+          sed -n '/```yaml/,/```/p' issue.md \
+            | sed '1d;$d' > index.yaml
+
+          if [ ! -s index.yaml ]; then
             echo "❌ No YAML found in issue body"
             exit 1
           fi
 
-      - name: Generate folder slug from title
+      # 3️⃣ Generate folder slug from issue title
+      - name: Generate folder slug
         id: slug
         run: |
+          set -e
+
           TITLE="${{ github.event.issue.title }}"
           TITLE="${TITLE#Story submission: }"
 
@@ -41,49 +48,82 @@ jobs:
             | sed 's/[^a-z0-9 ]//g' \
             | sed 's/ \+/-/g')
 
-          echo "slug=$SLUG" >> $GITHUB_OUTPUT
+          if [ -z "$SLUG" ]; then
+            echo "❌ Failed to generate slug"
+            exit 1
+          fi
 
-      - name: Create story folder and index.yaml
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+
+      # 4️⃣ Create story directory and move YAML
+      - name: Create story directory
         run: |
-          mkdir -p stories/${{ steps.slug.outputs.slug }}
-          mv story.yaml stories/${{ steps.slug.outputs.slug }}/index.yaml
+          set -e
 
+          STORY_DIR="stories/${{ steps.slug.outputs.slug }}"
+          mkdir -p "$STORY_DIR"
+          mv index.yaml "$STORY_DIR/index.yaml"
+
+      # 5️⃣ Download images uploaded in the issue
       - name: Download images from issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ISSUE_NUMBER=${{ github.event.issue.number }}
+          set -e
 
-          gh issue view $ISSUE_NUMBER \
-            --json body \
-            -q '.body' \
+          ISSUE_NUMBER=${{ github.event.issue.number }}
+          STORY_DIR="stories/${{ steps.slug.outputs.slug }}"
+
+          gh issue view "$ISSUE_NUMBER" --json body -q '.body' \
             | grep -oE 'https://user-images.githubusercontent.com[^)]+' \
-            | while read url; do
-                curl -L "$url" -O
+            | while read -r url; do
+                echo "Downloading $url"
+                curl -sSL "$url" -O
               done
 
-          mv *.png *.jpg *.jpeg stories/${{ steps.slug.outputs.slug }} 2>/dev/null || true
+          # Move downloaded images if any exist
+          shopt -s nullglob
+          IMAGES=( *.png *.jpg *.jpeg *.webp )
 
-      - name: Create PR branch
+          if [ ${#IMAGES[@]} -eq 0 ]; then
+            echo "❌ No images found in issue. Please upload both images."
+            exit 1
+          fi
+
+          mv "${IMAGES[@]}" "$STORY_DIR/"
+
+      # 6️⃣ Create branch, commit, push
+      - name: Commit story files
         run: |
-          git checkout -b story/${{ steps.slug.outputs.slug }}
+          set -e
+
+          BRANCH="story/${{ steps.slug.outputs.slug }}"
+          git checkout -b "$BRANCH"
+
           git add stories/${{ steps.slug.outputs.slug }}
           git commit -m "Add story: ${{ steps.slug.outputs.slug }}"
-          git push origin story/${{ steps.slug.outputs.slug }}
+          git push origin "$BRANCH"
 
+      # 7️⃣ Open Pull Request
       - name: Open Pull Request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
+
           gh pr create \
             --title "Add story: ${{ steps.slug.outputs.slug }}" \
             --body "Auto-generated from issue #${{ github.event.issue.number }}" \
             --base main
 
+      # 8️⃣ Comment PR link on issue
       - name: Comment PR link on issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
+
           PR_URL=$(gh pr view --json url -q .url)
+
           gh issue comment ${{ github.event.issue.number }} \
             --body "✅ Pull request created: $PR_URL"
