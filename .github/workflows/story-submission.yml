@@ -15,15 +15,16 @@ jobs:
       issues: write
 
     steps:
-      # 1️⃣ Checkout repo
-      - uses: actions/checkout@v4
+      # 1️⃣ Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # 2️⃣ Extract YAML safely from GitHub event JSON
+      # 2️⃣ Extract YAML safely from GitHub event payload
       - name: Extract YAML from issue (SAFE)
         run: |
           set -e
 
-          # Read issue body from GitHub event payload
+          # Read issue body from GitHub event JSON
           jq -r '.issue.body' "$GITHUB_EVENT_PATH" > issue.md
 
           # Extract fenced YAML block
@@ -35,7 +36,7 @@ jobs:
             exit 1
           fi
 
-      # 3️⃣ Generate slug from issue title
+      # 3️⃣ Generate folder slug from issue title
       - name: Generate folder slug
         id: slug
         run: |
@@ -56,7 +57,7 @@ jobs:
 
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
 
-      # 4️⃣ Create story directory
+      # 4️⃣ Create story directory and move YAML
       - name: Create story directory
         run: |
           set -e
@@ -64,7 +65,7 @@ jobs:
           mkdir -p "$STORY_DIR"
           mv index.yaml "$STORY_DIR/index.yaml"
 
-      # 5️⃣ Download images from issue (FIXED)
+      # 5️⃣ Download images from issue (FINAL FIX)
       - name: Download images from issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -74,15 +75,17 @@ jobs:
           ISSUE_NUMBER=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
           STORY_DIR="stories/${{ steps.slug.outputs.slug }}"
 
-          # Extract ALL URLs from issue body (GitHub uses multiple domains now)
+          # Extract ALL URLs from issue body
           gh issue view "$ISSUE_NUMBER" --json body -q '.body' \
             | grep -oE 'https://[^ )"]+' \
             | while read -r url; do
                 echo "Downloading $url"
-                curl -sSL "$url" -O || true
+                curl -L \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -OJ "$url"
               done
 
-          # Keep only image files
+          # Only keep real image files
           shopt -s nullglob
           IMAGES=( *.png *.jpg *.jpeg *.webp )
 
@@ -90,23 +93,26 @@ jobs:
 
           if [ ${#IMAGES[@]} -lt 2 ]; then
             echo "❌ Less than 2 images uploaded"
+            echo "Files downloaded:"
+            ls -la
             exit 1
           fi
 
           mv "${IMAGES[@]}" "$STORY_DIR/"
 
-      # 6️⃣ Commit and push
+      # 6️⃣ Commit and push changes
       - name: Commit story
         run: |
           set -e
 
           BRANCH="story/${{ steps.slug.outputs.slug }}"
           git checkout -b "$BRANCH"
+
           git add stories/${{ steps.slug.outputs.slug }}
           git commit -m "Add story: ${{ steps.slug.outputs.slug }}"
           git push origin "$BRANCH"
 
-      # 7️⃣ Open PR
+      # 7️⃣ Open Pull Request
       - name: Open Pull Request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -116,7 +122,7 @@ jobs:
             --body "Auto-generated from issue #$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")" \
             --base main
 
-      # 8️⃣ Comment PR link on issue
+      # 8️⃣ Comment PR link back on issue
       - name: Comment PR link on issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
