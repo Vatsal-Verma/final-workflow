@@ -1,0 +1,27 @@
+map:
+  authored_by: ''
+  location: ''
+  industries: []
+  geojson: ''
+metadata:
+  title: ''
+  organization: ''
+  industries: []
+  programming_languages: []
+  platforms: []
+  version_control_systems: []
+  build_tools: []
+  community_supports: []
+body_content:
+  title: jenknis
+  paragraphs: []
+title: Jenkins
+date: '2026-01-23T13:56:31.152Z'
+authored_by: ''
+image: 14.png
+tag_line: ''
+quotes:
+  - from: jenkins
+    content: jenkins
+    image: ./12.png
+
