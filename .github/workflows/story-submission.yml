@@ -15,10 +15,13 @@ jobs:
       issues: write
 
     steps:
-      # 1️⃣ Checkout
-      - uses: actions/checkout@v4
+      # 1️⃣ Checkout main explicitly
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
 
-      # 2️⃣ Extract YAML
+      # 2️⃣ Extract YAML from issue
       - name: Extract YAML from issue
         run: |
           set -e
@@ -39,26 +42,53 @@ jobs:
           ISSUE_NUMBER=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
           TITLE="${TITLE#Story submission: }"
 
-          SLUG=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | sed 's/ \+/-/g')
+          SLUG=$(echo "$TITLE" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed 's/[^a-z0-9 ]//g' \
+            | sed 's/ \+/-/g')
+
           BRANCH="story/${SLUG}-issue-${ISSUE_NUMBER}"
 
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
-      # 4️⃣ Create directory
+      # 4️⃣ Detect if story already exists in main
+      - name: Check if story already exists
+        id: exists
+        run: |
+          if [ -d "stories/${{ steps.names.outputs.slug }}" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 5️⃣ Stop early if story already exists
+      - name: Comment and exit if duplicate
+        if: steps.exists.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment \
+            $(jq -r '.issue.number' "$GITHUB_EVENT_PATH") \
+            --body "⚠️ A story with this title already exists in `main`. No pull request was created."
+          exit 0
+
+      # 6️⃣ Create branch ONLY when needed
+      - name: Create branch
+        run: |
+          git checkout -b "${{ steps.names.outputs.branch }}"
+
+      # 7️⃣ Create story directory
       - name: Create story directory
         run: |
-          set -e
-          STORY_DIR="stories/${{ steps.names.outputs.slug }}"
-          mkdir -p "$STORY_DIR"
-          mv index.yaml "$STORY_DIR/index.yaml"
+          mkdir -p "stories/${{ steps.names.outputs.slug }}"
+          mv index.yaml "stories/${{ steps.names.outputs.slug }}/index.yaml"
 
-      # 5️⃣ Download images (optional)
+      # 8️⃣ Download images (optional)
       - name: Download images
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -e
           ISSUE_NUMBER=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
           STORY_DIR="stories/${{ steps.names.outputs.slug }}"
 
@@ -72,31 +102,21 @@ jobs:
           IMAGES=( *.png *.jpg *.jpeg *.webp )
           [ ${#IMAGES[@]} -gt 0 ] && mv "${IMAGES[@]}" "$STORY_DIR/" || true
 
-      # 6️⃣ Configure git
+      # 9️⃣ Configure git
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # 7️⃣ Commit & push
+      # 🔟 Commit & push
       - name: Commit and push
-        id: commit
         run: |
-          set -e
-          git checkout -b "${{ steps.names.outputs.branch }}"
           git add stories/${{ steps.names.outputs.slug }}
-
-          if git diff --cached --quiet; then
-            echo "no_changes=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           git commit -m "Add story: ${{ steps.names.outputs.slug }}"
           git push origin "${{ steps.names.outputs.branch }}"
 
-      # 8️⃣ Open PR only if changes exist
+      # 1️⃣1️⃣ Open PR (guaranteed diff)
       - name: Open Pull Request
-        if: steps.commit.outputs.no_changes != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -106,16 +126,12 @@ jobs:
             --head "${{ steps.names.outputs.branch }}" \
             --base main
 
-      # 9️⃣ Comment result on issue
-      - name: Comment result
+      # 1️⃣2️⃣ Comment success
+      - name: Comment PR link
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ISSUE_NUMBER=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
-
-          if gh pr view --json url >/dev/null 2>&1; then
-            PR_URL=$(gh pr view --json url -q .url)
-            gh issue comment "$ISSUE_NUMBER" --body "✅ Pull request created: $PR_URL"
-          else
-            gh issue comment "$ISSUE_NUMBER" --body "ℹ️ No pull request created because no changes were detected."
-          fi
+          PR_URL=$(gh pr view --json url -q .url)
+          gh issue comment \
+            $(jq -r '.issue.number' "$GITHUB_EVENT_PATH") \
+            --body "✅ Pull request created: $PR_URL"
