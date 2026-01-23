@@ -97,19 +97,45 @@ jobs:
           # Get issue body
           gh issue view ${{ github.event.issue.number }} --json body -q '.body' > issue_body.txt
           
-          # Extract images in markdown format: ![name](url) and download with original name
+          echo "Issue body content:"
+          cat issue_body.txt
+          echo "---"
+          
+          # Method 1: Extract markdown images ![name](url)
           grep -oP '!\[[^\]]+\]\(https://[^)]+\)' issue_body.txt | while read -r img; do
             NAME=$(echo "$img" | grep -oP '!\[\K[^\]]+')
             URL=$(echo "$img" | grep -oP 'https://[^)]+')
             
-            # Add .png extension if filename doesn't have one
+            # Add .png extension if needed
             [[ ! "$NAME" =~ \. ]] && NAME="${NAME}.png"
             
-            echo "Downloading: $NAME"
+            echo "Downloading markdown image: $NAME from $URL"
             curl -sL -H "Authorization: Bearer $GH_TOKEN" -o "$STORY_DIR/$NAME" "$URL"
           done
           
-          echo "Downloaded images:"
+          # Method 2: Extract all GitHub attachment URLs (for direct uploads)
+          grep -oE 'https://github\.com/user-attachments/assets/[a-zA-Z0-9-]+' issue_body.txt | while read -r url; do
+            # Try to get original filename from surrounding markdown or use hash
+            CONTEXT=$(grep -B1 -A1 "$url" issue_body.txt || echo "")
+            
+            # Check if there's a markdown image name before this URL
+            NAME=$(echo "$CONTEXT" | grep -oP '!\[\K[^\]]+(?=\]\([^)]*'$(echo $url | sed 's/[]\/$*.^[]/\\&/g')')' || echo "")
+            
+            if [ -z "$NAME" ]; then
+              # No markdown name found, use the hash with .png extension
+              HASH=$(basename "$url")
+              NAME="${HASH}.png"
+            else
+              # Add extension if needed
+              [[ ! "$NAME" =~ \. ]] && NAME="${NAME}.png"
+            fi
+            
+            echo "Downloading attachment: $NAME from $url"
+            curl -sL -H "Authorization: Bearer $GH_TOKEN" -o "$STORY_DIR/$NAME" "$url"
+          done
+          
+          echo "---"
+          echo "Downloaded images in $STORY_DIR:"
           ls -lah "$STORY_DIR"
 
       # 9️⃣ Configure git
