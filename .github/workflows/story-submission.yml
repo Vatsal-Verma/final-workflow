@@ -16,31 +16,28 @@ jobs:
 
     steps:
       # 1️⃣ Checkout repository
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       # 2️⃣ Extract YAML safely from GitHub event payload
-      - name: Extract YAML from issue (SAFE)
+      - name: Extract YAML from issue
         run: |
           set -e
-
           jq -r '.issue.body' "$GITHUB_EVENT_PATH" > issue.md
-
-          sed -n '/```yaml/,/```/p' issue.md \
-            | sed '1d;$d' > index.yaml
+          sed -n '/```yaml/,/```/p' issue.md | sed '1d;$d' > index.yaml
 
           if [ ! -s index.yaml ]; then
             echo "❌ No YAML block found in issue"
             exit 1
           fi
 
-      # 3️⃣ Generate folder slug from issue title
-      - name: Generate folder slug
-        id: slug
+      # 3️⃣ Generate slug + branch name
+      - name: Generate names
+        id: names
         run: |
           set -e
 
           TITLE=$(jq -r '.issue.title' "$GITHUB_EVENT_PATH")
+          ISSUE_NUMBER=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
           TITLE="${TITLE#Story submission: }"
 
           SLUG=$(echo "$TITLE" \
@@ -48,78 +45,67 @@ jobs:
             | sed 's/[^a-z0-9 ]//g' \
             | sed 's/ \+/-/g')
 
-          if [ -z "$SLUG" ]; then
-            echo "❌ Failed to generate slug"
-            exit 1
-          fi
+          BRANCH="story/${SLUG}-issue-${ISSUE_NUMBER}"
 
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
-      # 4️⃣ Create story directory and move YAML
+      # 4️⃣ Create story directory
       - name: Create story directory
         run: |
           set -e
-          STORY_DIR="stories/${{ steps.slug.outputs.slug }}"
+          STORY_DIR="stories/${{ steps.names.outputs.slug }}"
           mkdir -p "$STORY_DIR"
           mv index.yaml "$STORY_DIR/index.yaml"
 
-      # 5️⃣ Download images from issue (NO COUNT CHECK)
+      # 5️⃣ Download images from issue (optional)
       - name: Download images from issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-
           ISSUE_NUMBER=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
-          STORY_DIR="stories/${{ steps.slug.outputs.slug }}"
+          STORY_DIR="stories/${{ steps.names.outputs.slug }}"
 
           gh issue view "$ISSUE_NUMBER" --json body -q '.body' \
             | grep -oE 'https://[^ )"]+' \
             | while read -r url; do
-                echo "Downloading $url"
-                curl -L \
-                  -H "Authorization: Bearer $GH_TOKEN" \
-                  -OJ "$url" || true
+                curl -L -H "Authorization: Bearer $GH_TOKEN" -OJ "$url" || true
               done
 
           shopt -s nullglob
           IMAGES=( *.png *.jpg *.jpeg *.webp )
-
           if [ ${#IMAGES[@]} -gt 0 ]; then
-            echo "Moving ${#IMAGES[@]} image(s) into story folder"
             mv "${IMAGES[@]}" "$STORY_DIR/"
-          else
-            echo "No images uploaded — continuing without images"
           fi
 
+      # 6️⃣ Configure git identity
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # 6️⃣ Commit and push changes
+      # 7️⃣ Commit and push (SAFE, UNIQUE BRANCH)
       - name: Commit story
         run: |
           set -e
+          git checkout -b "${{ steps.names.outputs.branch }}"
+          git add stories/${{ steps.names.outputs.slug }}
+          git commit -m "Add story: ${{ steps.names.outputs.slug }}"
+          git push origin "${{ steps.names.outputs.branch }}"
 
-          BRANCH="story/${{ steps.slug.outputs.slug }}"
-          git checkout -b "$BRANCH"
-
-          git add stories/${{ steps.slug.outputs.slug }}
-          git commit -m "Add story: ${{ steps.slug.outputs.slug }}"
-          git push origin "$BRANCH"
-
-      # 7️⃣ Open Pull Request
+      # 8️⃣ Open Pull Request
       - name: Open Pull Request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh pr create \
-            --title "Add story: ${{ steps.slug.outputs.slug }}" \
+            --title "Add story: ${{ steps.names.outputs.slug }}" \
             --body "Auto-generated from issue #$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")" \
+            --head "${{ steps.names.outputs.branch }}" \
             --base main
 
-      # 8️⃣ Comment PR link back on issue
+      # 9️⃣ Comment PR link on issue
       - name: Comment PR link on issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
