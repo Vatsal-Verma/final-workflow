@@ -86,31 +86,53 @@ jobs:
           mkdir -p "stories/${{ steps.names.outputs.slug }}"
           mv index.yaml "stories/${{ steps.names.outputs.slug }}/index.yaml"
 
-      # 8️⃣ Download images (optional)
-      - name: Download images
+      # 8️⃣ Download images from issue
+      - name: Download images from issue
         if: steps.exists.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           STORY_DIR="stories/${{ steps.names.outputs.slug }}"
-          cd "$STORY_DIR"
-
-          gh issue view ${{ github.event.issue.number }} --json body -q '.body' \
-            | grep -oE 'https://[^ )"]+\.(png|jpg|jpeg|gif|webp|svg)' \
-            | while read -r url; do
-                echo "Downloading: $url"
-                curl -L -H "Authorization: Bearer $GH_TOKEN" -O "$url" || true
-              done
-
-          # Also check for GitHub user-attachments URLs
-          gh issue view ${{ github.event.issue.number }} --json body -q '.body' \
-            | grep -oE 'https://github\.com/user-attachments/assets/[a-zA-Z0-9-]+' \
-            | while read -r url; do
-                echo "Downloading attachment: $url"
-                curl -L -H "Authorization: Bearer $GH_TOKEN" -O "$url" || true
-              done
-
-          ls -la
+          
+          # Extract image URLs and their markdown names from the issue
+          gh issue view ${{ github.event.issue.number }} --json body -q '.body' > issue_body.txt
+          
+          # Find markdown images: ![filename](url)
+          grep -oP '!\[([^\]]+)\]\((https://[^)]+)\)' issue_body.txt | while IFS= read -r line; do
+            # Extract filename and URL
+            FILENAME=$(echo "$line" | sed -n 's/!\[\([^]]*\)\].*/\1/p')
+            URL=$(echo "$line" | sed -n 's/.*(\(https:\/\/[^)]*\)).*/\1/p')
+            
+            # If filename doesn't have an extension, try to get it from Content-Type
+            if [[ ! "$FILENAME" =~ \.(png|jpg|jpeg|gif|webp|svg)$ ]]; then
+              EXT=$(curl -sI "$URL" | grep -i 'content-type:' | sed -n 's/.*image\/\([^;[:space:]]*\).*/\1/p')
+              if [ -n "$EXT" ]; then
+                FILENAME="${FILENAME}.${EXT}"
+              else
+                FILENAME="${FILENAME}.png"
+              fi
+            fi
+            
+            echo "Downloading $URL as $FILENAME"
+            curl -L -H "Authorization: Bearer $GH_TOKEN" -o "$STORY_DIR/$FILENAME" "$URL" || true
+          done
+          
+          # Also handle plain image URLs (not in markdown format)
+          grep -oE 'https://github\.com/user-attachments/assets/[a-zA-Z0-9-]+' issue_body.txt | while read -r url; do
+            # Get content type to determine extension
+            EXT=$(curl -sI "$url" -H "Authorization: Bearer $GH_TOKEN" | grep -i 'content-type:' | sed -n 's/.*image\/\([^;[:space:]]*\).*/\1/p')
+            [ -z "$EXT" ] && EXT="png"
+            
+            # Generate a filename based on the hash
+            HASH=$(basename "$url")
+            FILENAME="${HASH}.${EXT}"
+            
+            echo "Downloading attachment: $url as $FILENAME"
+            curl -L -H "Authorization: Bearer $GH_TOKEN" -o "$STORY_DIR/$FILENAME" "$url" || true
+          done
+          
+          echo "Images in story directory:"
+          ls -la "$STORY_DIR"
 
       # 9️⃣ Configure git
       - name: Configure git
