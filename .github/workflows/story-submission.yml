@@ -92,6 +92,11 @@ jobs:
             echo "No images uploaded — continuing without images"
           fi
 
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       # 6️⃣ Commit and push changes
       - name: Commit story
         run: |
