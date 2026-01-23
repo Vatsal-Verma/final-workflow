@@ -1,0 +1,89 @@
+name: Story Submission → PR
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  create-story-pr:
+    if: github.event.label.name == 'story-submission'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract YAML from issue
+        id: extract_yaml
+        run: |
+          BODY="${{ github.event.issue.body }}"
+
+          echo "$BODY" | sed -n '/```yaml/,/```/p' | sed '1d;$d' > story.yaml
+
+          if [ ! -s story.yaml ]; then
+            echo "❌ No YAML found in issue body"
+            exit 1
+          fi
+
+      - name: Generate folder slug from title
+        id: slug
+        run: |
+          TITLE="${{ github.event.issue.title }}"
+          TITLE="${TITLE#Story submission: }"
+
+          SLUG=$(echo "$TITLE" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed 's/[^a-z0-9 ]//g' \
+            | sed 's/ \+/-/g')
+
+          echo "slug=$SLUG" >> $GITHUB_OUTPUT
+
+      - name: Create story folder and index.yaml
+        run: |
+          mkdir -p stories/${{ steps.slug.outputs.slug }}
+          mv story.yaml stories/${{ steps.slug.outputs.slug }}/index.yaml
+
+      - name: Download images from issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUMBER=${{ github.event.issue.number }}
+
+          gh issue view $ISSUE_NUMBER \
+            --json body \
+            -q '.body' \
+            | grep -oE 'https://user-images.githubusercontent.com[^)]+' \
+            | while read url; do
+                curl -L "$url" -O
+              done
+
+          mv *.png *.jpg *.jpeg stories/${{ steps.slug.outputs.slug }} 2>/dev/null || true
+
+      - name: Create PR branch
+        run: |
+          git checkout -b story/${{ steps.slug.outputs.slug }}
+          git add stories/${{ steps.slug.outputs.slug }}
+          git commit -m "Add story: ${{ steps.slug.outputs.slug }}"
+          git push origin story/${{ steps.slug.outputs.slug }}
+
+      - name: Open Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --title "Add story: ${{ steps.slug.outputs.slug }}" \
+            --body "Auto-generated from issue #${{ github.event.issue.number }}" \
+            --base main
+
+      - name: Comment PR link on issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL=$(gh pr view --json url -q .url)
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "✅ Pull request created: $PR_URL"
