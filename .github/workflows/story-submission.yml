@@ -75,11 +75,11 @@ jobs:
           ISSUE_BODY=$(gh issue view ${{ steps.vars.outputs.issue_num }} --json body -q '.body')
           
           # Download images with original filenames
-          echo "$ISSUE_BODY" | grep -o '!\[.*\](https://github\.com/user-attachments/assets/[^)]*' | while IFS= read -r line; do
-            # Extract filename (between ![  and  ])
-            FILENAME=$(echo "$line" | sed 's/!\[\(.*\)\](.*)/\1/')
-            # Extract URL (after ](  )
-            URL=$(echo "$line" | sed 's/.*(\(.*\))/\1/')
+          echo "$ISSUE_BODY" | grep -oE '!\[[^]]+\]\(https://github\.com/user-attachments/assets/[^)]+\)' | while IFS= read -r line; do
+            # Extract filename (between ![ and ])
+            FILENAME=$(echo "$line" | sed -n 's/!\[\([^]]*\)\](.*)/\1/p')
+            # Extract URL (between ( and ))
+            URL=$(echo "$line" | sed -n 's/.*(\([^)]*\)).*/\1/p')
             
             # Download file
             echo "Downloading: $FILENAME from $URL"
