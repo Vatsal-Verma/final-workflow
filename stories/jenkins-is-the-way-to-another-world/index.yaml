@@ -1,0 +1,45 @@
+map:
+  authored_by: Vatsal-Verma
+  location: India
+  industries:
+    - IT
+    - Softwares
+  geojson: '{"type":"Point","coordinates":[-82.99,39.96]}'
+metadata:
+  title: This will help in many ways :)
+  organization: Jenkins
+  industries:
+    - IT
+    - Softwares
+  programming_languages:
+    - Java
+    - C++
+    - Go
+    - Rust
+  platforms: []
+  version_control_systems:
+    - Git
+    - Github
+    - GitLab
+  build_tools:
+    - Maven
+    - Gradle
+  community_supports:
+    - Jenkins.io & website blogs
+    - stories.jenkins.io
+body_content:
+  title: Let's dive into the world of Jenkins
+  paragraphs:
+    - '**background: ** Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry''s standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960'
+    - '**Goals: ** Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry''s standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960'
+    - '**Solutions & Result: ** Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry''s standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960'
+title: Jenkins is the way to another world
+date: '2026-01-24T16:52:49.712Z'
+authored_by: Vatsal-Verma
+image: 12.png
+tag_line: Jenkins is everything
+quotes:
+  - from: Jenkins is the way to show out talent
+    content: Jenkins made this very easier to Build, Maintain and Deploy
+    image: ./12.png
+
