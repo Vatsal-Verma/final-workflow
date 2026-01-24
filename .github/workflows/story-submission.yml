@@ -71,13 +71,20 @@ jobs:
           mkdir -p "$STORY_DIR"
           mv index.yaml "$STORY_DIR/"
           
-          # Download images from issue
-          gh issue view ${{ steps.vars.outputs.issue_num }} --json body -q '.body' |
-            grep -oE 'https://github\.com/user-attachments/assets/[a-zA-Z0-9-]+' |
-            while read -r url; do
-              curl -sL -H "Authorization: Bearer $GH_TOKEN" \
-                -o "$STORY_DIR/$(basename "$url").png" "$url"
-            done
+          # Get issue body
+          ISSUE_BODY=$(gh issue view ${{ steps.vars.outputs.issue_num }} --json body -q '.body')
+          
+          # Download images with original filenames
+          echo "$ISSUE_BODY" | grep -o '!\[.*\](https://github\.com/user-attachments/assets/[^)]*' | while IFS= read -r line; do
+            # Extract filename (between ![  and  ])
+            FILENAME=$(echo "$line" | sed 's/!\[\(.*\)\](.*)/\1/')
+            # Extract URL (after ](  )
+            URL=$(echo "$line" | sed 's/.*(\(.*\))/\1/')
+            
+            # Download file
+            echo "Downloading: $FILENAME from $URL"
+            curl -sL -H "Authorization: Bearer $GH_TOKEN" -o "$STORY_DIR/$FILENAME" "$URL"
+          done
 
       - name: Create and push branch
         if: steps.duplicate.outputs.exists == 'false'
