@@ -8,170 +8,101 @@ jobs:
   create-story-pr:
     if: github.event.label.name == 'story-submission'
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
       pull-requests: write
       issues: write
 
     steps:
-      # 1️⃣ Checkout master explicitly
-      - name: Checkout master
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: master
 
-      # 2️⃣ Extract YAML from issue
-      - name: Extract YAML from issue
+      - name: Setup variables
+        id: vars
         run: |
-          set -e
-          jq -r '.issue.body' "$GITHUB_EVENT_PATH" > issue.md
-          sed -n '/```yaml/,/```/p' issue.md | sed '1d;$d' > index.yaml
-
-          if [ ! -s index.yaml ]; then
-            echo "❌ No YAML block found"
-            exit 1
-          fi
-
-      # 3️⃣ Generate names
-      - name: Generate names
-        id: names
-        run: |
-          set -e
-          TITLE=$(jq -r '.issue.title' "$GITHUB_EVENT_PATH")
-          ISSUE_NUMBER=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
-          TITLE="${TITLE#Story submission: }"
-
-          SLUG=$(echo "$TITLE" \
-            | tr '[:upper:]' '[:lower:]' \
-            | sed 's/[^a-z0-9 ]//g' \
-            | sed 's/ \+/-/g')
-
-          BRANCH="story/${SLUG}-issue-${ISSUE_NUMBER}"
-
+          # Get issue details
+          TITLE=$(jq -r '.issue.title' "$GITHUB_EVENT_PATH" | sed 's/^Story submission: //')
+          ISSUE_NUM=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
+          
+          # Create slug from title
+          SLUG=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | sed 's/ \+/-/g')
+          
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
-          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "branch=story/${SLUG}-issue-${ISSUE_NUM}" >> "$GITHUB_OUTPUT"
+          echo "issue_num=$ISSUE_NUM" >> "$GITHUB_OUTPUT"
 
-      # 4️⃣ Detect if story already exists in master
-      - name: Check if story already exists
-        id: exists
+      - name: Check for duplicate
+        id: duplicate
         run: |
-          if [ -d "stories/${{ steps.names.outputs.slug }}" ]; then
+          if [ -d "stories/${{ steps.vars.outputs.slug }}" ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # 5️⃣ Stop early if story already exists
-      - name: Comment and exit if duplicate
-        if: steps.exists.outputs.exists == 'true'
+      - name: Exit if duplicate
+        if: steps.duplicate.outputs.exists == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment \
-            ${{ github.event.issue.number }} \
-            --body "⚠️ A story with this title already exists in \`master\`. No pull request was created."
+          gh issue comment ${{ steps.vars.outputs.issue_num }} \
+            --body "⚠️ Story already exists. No PR created."
           exit 0
 
-      # 6️⃣ Create branch ONLY when needed
-      - name: Create branch
-        if: steps.exists.outputs.exists == 'false'
+      - name: Extract YAML from issue
+        if: steps.duplicate.outputs.exists == 'false'
         run: |
-          git checkout -b "${{ steps.names.outputs.branch }}"
+          # Extract issue body and get YAML block
+          jq -r '.issue.body' "$GITHUB_EVENT_PATH" | 
+            sed -n '/```yaml/,/```/p' | 
+            sed '1d;$d' > index.yaml
+          
+          # Validate YAML exists
+          [ -s index.yaml ] || { echo "❌ No YAML found"; exit 1; }
 
-      # 7️⃣ Create story directory
-      - name: Create story directory
-        if: steps.exists.outputs.exists == 'false'
-        run: |
-          mkdir -p "stories/${{ steps.names.outputs.slug }}"
-          mv index.yaml "stories/${{ steps.names.outputs.slug }}/index.yaml"
-
-      # 8️⃣ Download images from issue
-      - name: Download images from issue
-        if: steps.exists.outputs.exists == 'false'
+      - name: Create story files
+        if: steps.duplicate.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          STORY_DIR="stories/${{ steps.names.outputs.slug }}"
+          STORY_DIR="stories/${{ steps.vars.outputs.slug }}"
+          mkdir -p "$STORY_DIR"
+          mv index.yaml "$STORY_DIR/"
           
-          # Get issue body
-          gh issue view ${{ github.event.issue.number }} --json body -q '.body' > issue_body.txt
-          
-          echo "Issue body content:"
-          cat issue_body.txt
-          echo "---"
-          
-          # Method 1: Extract markdown images ![name](url)
-          grep -oP '!\[[^\]]+\]\(https://[^)]+\)' issue_body.txt | while read -r img; do
-            NAME=$(echo "$img" | grep -oP '!\[\K[^\]]+')
-            URL=$(echo "$img" | grep -oP 'https://[^)]+')
-            
-            # Add .png extension if needed
-            [[ ! "$NAME" =~ \. ]] && NAME="${NAME}.png"
-            
-            echo "Downloading markdown image: $NAME from $URL"
-            curl -sL -H "Authorization: Bearer $GH_TOKEN" -o "$STORY_DIR/$NAME" "$URL"
-          done
-          
-          # Method 2: Extract all GitHub attachment URLs (for direct uploads)
-          grep -oE 'https://github\.com/user-attachments/assets/[a-zA-Z0-9-]+' issue_body.txt | while read -r url; do
-            # Try to get original filename from surrounding markdown or use hash
-            CONTEXT=$(grep -B1 -A1 "$url" issue_body.txt || echo "")
-            
-            # Check if there's a markdown image name before this URL
-            NAME=$(echo "$CONTEXT" | grep -oP '!\[\K[^\]]+(?=\]\([^)]*'$(echo $url | sed 's/[]\/$*.^[]/\\&/g')')' || echo "")
-            
-            if [ -z "$NAME" ]; then
-              # No markdown name found, use the hash with .png extension
-              HASH=$(basename "$url")
-              NAME="${HASH}.png"
-            else
-              # Add extension if needed
-              [[ ! "$NAME" =~ \. ]] && NAME="${NAME}.png"
-            fi
-            
-            echo "Downloading attachment: $NAME from $url"
-            curl -sL -H "Authorization: Bearer $GH_TOKEN" -o "$STORY_DIR/$NAME" "$url"
-          done
-          
-          echo "---"
-          echo "Downloaded images in $STORY_DIR:"
-          ls -lah "$STORY_DIR"
+          # Download images from issue
+          gh issue view ${{ steps.vars.outputs.issue_num }} --json body -q '.body' |
+            grep -oE 'https://github\.com/user-attachments/assets/[a-zA-Z0-9-]+' |
+            while read -r url; do
+              curl -sL -H "Authorization: Bearer $GH_TOKEN" \
+                -o "$STORY_DIR/$(basename "$url").png" "$url"
+            done
 
-      # 9️⃣ Configure git
-      - name: Configure git
-        if: steps.exists.outputs.exists == 'false'
+      - name: Create and push branch
+        if: steps.duplicate.outputs.exists == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git checkout -b "${{ steps.vars.outputs.branch }}"
+          git add stories/${{ steps.vars.outputs.slug }}
+          git commit -m "Add story: ${{ steps.vars.outputs.slug }}"
+          git push origin "${{ steps.vars.outputs.branch }}"
 
-      # 🔟 Commit & push
-      - name: Commit and push
-        if: steps.exists.outputs.exists == 'false'
-        run: |
-          git add stories/${{ steps.names.outputs.slug }}
-          git commit -m "Add story: ${{ steps.names.outputs.slug }}"
-          git push origin "${{ steps.names.outputs.branch }}"
-
-      # 1️⃣1️⃣ Open PR (guaranteed diff)
-      - name: Open Pull Request
-        if: steps.exists.outputs.exists == 'false'
+      - name: Create PR and comment
+        if: steps.duplicate.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Create PR
           gh pr create \
-            --title "Add story: ${{ steps.names.outputs.slug }}" \
-            --body "Auto-generated from issue #${{ github.event.issue.number }}" \
-            --head "${{ steps.names.outputs.branch }}" \
+            --title "Add story: ${{ steps.vars.outputs.slug }}" \
+            --body "Auto-generated from issue #${{ steps.vars.outputs.issue_num }}" \
+            --head "${{ steps.vars.outputs.branch }}" \
             --base master
-
-      # 1️⃣2️⃣ Comment success
-      - name: Comment PR link
-        if: steps.exists.outputs.exists == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
+          
+          # Comment on issue
           PR_URL=$(gh pr view --json url -q .url)
-          gh issue comment \
-            ${{ github.event.issue.number }} \
+          gh issue comment ${{ steps.vars.outputs.issue_num }} \
             --body "✅ Pull request created: $PR_URL"
