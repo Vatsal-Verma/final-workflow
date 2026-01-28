@@ -1,0 +1,46 @@
+map:
+  authored_by: Vatsal
+  location: India
+  industries:
+    - jenkins
+    - jenkins
+  geojson: ''
+metadata:
+  title: Jenkins is ...
+  organization: Jenkins, Jenkins
+  industries:
+    - Jenkins
+    - Jenkins
+  programming_languages:
+    - c++
+    - java
+    - Go
+    - Rust
+  platforms:
+    - Docker
+    - Kubernetes
+  version_control_systems:
+    - git
+    - github
+  build_tools:
+    - Maven
+    - gradle
+  community_supports:
+    - Jenkins.io & blogs
+body_content:
+  title: This is nothing but something great
+  paragraphs:
+    - |-
+      jkasjkdhsdjkashjd
+      jahdjkhajdkh
+    - kjashdjkhasjdhajskdhjasdhajshdjkaiquwioeuqiowue
+title: Jenkins is undoubtedly powerful
+date: '2026-01-28T17:24:43.132Z'
+authored_by: Vatsal
+image: test1.png
+tag_line: Jenkins is everything
+quotes:
+  - from: Jenkins is the way to success
+    content: ahsjdhajkdhsjakhdjkahdjkahdj
+    image: ./test2.png
+
