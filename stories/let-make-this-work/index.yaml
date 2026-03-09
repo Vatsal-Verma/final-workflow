@@ -1,0 +1,27 @@
+map:
+  authored_by: ''
+  location: ''
+  industries: []
+  geojson: ''
+metadata:
+  title: ''
+  organization: ''
+  industries: []
+  programming_languages: []
+  platforms: []
+  version_control_systems: []
+  build_tools: []
+  community_supports: []
+body_content:
+  title: ''
+  paragraphs: []
+title: let make this work
+date: '2026-03-07T22:01:16.698Z'
+authored_by: ''
+image: test1.png
+tag_line: 'owrk '
+quotes:
+  - from: ''
+    content: ''
+    image: ./test2.png
+
