@@ -69,8 +69,8 @@ jobs:
           # Get issue body
           ISSUE_BODY=$(gh issue view ${{ steps.vars.outputs.issue_num }} --json body -q '.body')
 
-          # Extract GitHub attachment URLs in order
-          mapfile -t URLS < <(echo "$ISSUE_BODY" | grep -oE 'https://github\.com/user-attachments/assets/[^)]+')
+          # Extract GitHub attachment URLs in order (precise UUID format)
+          mapfile -t URLS < <(echo "$ISSUE_BODY" | grep -oE 'https://github\.com/user-attachments/assets/[a-f0-9-]+')
 
           # Validate exactly 2 images uploaded
           if [ "${#URLS[@]}" -ne 2 ]; then
@@ -90,11 +90,21 @@ jobs:
             exit 1
           fi
 
+          # Download and validate story image
           echo "Downloading story image: $STORY_IMAGE ← ${URLS[0]}"
-          curl -sL -o "$STORY_DIR/$STORY_IMAGE" "${URLS[0]}"
+          if ! curl -sL -o "$STORY_DIR/$STORY_IMAGE" "${URLS[0]}" || [ ! -s "$STORY_DIR/$STORY_IMAGE" ]; then
+            gh issue comment ${{ steps.vars.outputs.issue_num }} \
+              --body "❌ Failed to download story image from ${URLS[0]}"
+            exit 1
+          fi
 
+          # Download and validate quote image
           echo "Downloading quote image: $QUOTE_IMAGE ← ${URLS[1]}"
-          curl -sL -o "$STORY_DIR/$QUOTE_IMAGE" "${URLS[1]}"
+          if ! curl -sL -o "$STORY_DIR/$QUOTE_IMAGE" "${URLS[1]}" || [ ! -s "$STORY_DIR/$QUOTE_IMAGE" ]; then
+            gh issue comment ${{ steps.vars.outputs.issue_num }} \
+              --body "❌ Failed to download quote image from ${URLS[1]}"
+            exit 1
+          fi
 
           mv index.yaml "$STORY_DIR/"
 
