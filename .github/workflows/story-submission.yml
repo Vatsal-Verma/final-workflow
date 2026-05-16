@@ -79,15 +79,14 @@ jobs:
             exit 1
           fi
 
-          # Extract both image filenames from YAML by order (story image first, quote image second)
-          mapfile -t IMAGES < <(grep -E 'image:' index.yaml | awk '{print $2}' | tr -d "'./")
-          STORY_IMAGE="${IMAGES[0]}"
-          QUOTE_IMAGE="${IMAGES[1]}"
+          # Extract image filenames from YAML using yq
+          STORY_IMAGE=$(yq -r '.image' index.yaml)
+          QUOTE_IMAGE=$(yq -r '.quotes[0].image' index.yaml | sed 's|^\./||')
 
           # Validate filenames were found
-          if [ -z "$STORY_IMAGE" ] || [ -z "$QUOTE_IMAGE" ]; then
+          if [ -z "$STORY_IMAGE" ] || [ -z "$QUOTE_IMAGE" ] || [ "$STORY_IMAGE" = "null" ] || [ "$QUOTE_IMAGE" = "null" ]; then
             gh issue comment ${{ steps.vars.outputs.issue_num }} \
-              --body "❌ Could not extract image filenames from YAML. Make sure \`image:\` and \`quotes[].image:\` fields are filled."
+              --body "❌ Could not extract image filenames from YAML. Make sure \`image:\` and \`quotes[0].image:\` fields are filled."
             exit 1
           fi
 
