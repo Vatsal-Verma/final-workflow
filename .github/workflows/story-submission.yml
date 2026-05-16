@@ -22,13 +22,11 @@ jobs:
       - name: Setup variables
         id: vars
         run: |
-          # Get issue details
           TITLE=$(jq -r '.issue.title' "$GITHUB_EVENT_PATH" | sed 's/^Story submission: //')
           ISSUE_NUM=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
-          
-          # Create slug from title
+
           SLUG=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | sed 's/ \+/-/g')
-          
+
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
           echo "branch=story/${SLUG}-issue-${ISSUE_NUM}" >> "$GITHUB_OUTPUT"
           echo "issue_num=$ISSUE_NUM" >> "$GITHUB_OUTPUT"
@@ -48,19 +46,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh issue comment ${{ steps.vars.outputs.issue_num }} \
-            --body "⚠️ Story already exists. No PR created."
+            --body "⚠️ A story with this title already exists. No PR was created."
           exit 0
 
       - name: Extract YAML from issue
         if: steps.duplicate.outputs.exists == 'false'
         run: |
-          # Extract issue body and get YAML block
-          jq -r '.issue.body' "$GITHUB_EVENT_PATH" | 
-            sed -n '/```yaml/,/```/p' | 
+          jq -r '.issue.body' "$GITHUB_EVENT_PATH" | \
+            sed -n '/```yaml/,/```/p' | \
             sed '1d;$d' > index.yaml
-          
-          # Validate YAML exists
-          [ -s index.yaml ] || { echo "❌ No YAML found"; exit 1; }
+
+          [ -s index.yaml ] || { echo "❌ No YAML block found in issue body"; exit 1; }
 
       - name: Create story files
         if: steps.duplicate.outputs.exists == 'false'
@@ -69,29 +65,50 @@ jobs:
         run: |
           STORY_DIR="stories/${{ steps.vars.outputs.slug }}"
           mkdir -p "$STORY_DIR"
-          mv index.yaml "$STORY_DIR/"
-          
+
           # Get issue body
           ISSUE_BODY=$(gh issue view ${{ steps.vars.outputs.issue_num }} --json body -q '.body')
-          
-          # Download images with original filenames
-          echo "$ISSUE_BODY" | grep -oE '!\[[^]]+\]\(https://github\.com/user-attachments/assets/[^)]+\)' | while IFS= read -r line; do
-            # Extract filename (between ![ and ])
-            FILENAME=$(echo "$line" | sed -n 's/!\[\([^]]*\)\](.*)/\1/p')
-            # Extract URL (between ( and ))
-            URL=$(echo "$line" | sed -n 's/.*(\([^)]*\)).*/\1/p')
-            
-            # Download file
-            echo "Downloading: $FILENAME from $URL"
-            curl -sL -H "Authorization: Bearer $GH_TOKEN" -o "$STORY_DIR/$FILENAME" "$URL"
-          done
+
+          # Extract GitHub attachment URLs in order
+          mapfile -t URLS < <(echo "$ISSUE_BODY" | grep -oE 'https://github\.com/user-attachments/assets/[^)]+')
+
+          # Validate exactly 2 images uploaded
+          if [ "${#URLS[@]}" -ne 2 ]; then
+            gh issue comment ${{ steps.vars.outputs.issue_num }} \
+              --body "❌ Expected exactly 2 images (story image + quote image), but found ${#URLS[@]}. Please edit the issue and upload both images."
+            exit 1
+          fi
+
+          # Extract filenames from YAML
+          # Top-level image: field
+          STORY_IMAGE=$(grep -E '^image:' index.yaml | awk '{print $2}' | tr -d "'")
+          # Nested quotes[].image field (last image: occurrence, indented)
+          QUOTE_IMAGE=$(grep -E '^\s*image:' index.yaml | tail -1 | awk '{print $2}' | tr -d "'/")
+
+          # Validate filenames were found
+          if [ -z "$STORY_IMAGE" ] || [ -z "$QUOTE_IMAGE" ]; then
+            gh issue comment ${{ steps.vars.outputs.issue_num }} \
+              --body "❌ Could not extract image filenames from YAML. Make sure \`image:\` and \`quotes[].image:\` fields are filled."
+            exit 1
+          fi
+
+          echo "Downloading story image: $STORY_IMAGE ← ${URLS[0]}"
+          curl -sL -H "Authorization: Bearer $GH_TOKEN" \
+            -o "$STORY_DIR/$STORY_IMAGE" "${URLS[0]}"
+
+          echo "Downloading quote image: $QUOTE_IMAGE ← ${URLS[1]}"
+          curl -sL -H "Authorization: Bearer $GH_TOKEN" \
+            -o "$STORY_DIR/$QUOTE_IMAGE" "${URLS[1]}"
+
+          # Move YAML after images are confirmed downloaded
+          mv index.yaml "$STORY_DIR/"
 
       - name: Create and push branch
         if: steps.duplicate.outputs.exists == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           git checkout -b "${{ steps.vars.outputs.branch }}"
           git add stories/${{ steps.vars.outputs.slug }}
           git commit -m "Add story: ${{ steps.vars.outputs.slug }}"
@@ -102,14 +119,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create PR
           gh pr create \
             --title "Add story: ${{ steps.vars.outputs.slug }}" \
             --body "Auto-generated from issue #${{ steps.vars.outputs.issue_num }}" \
             --head "${{ steps.vars.outputs.branch }}" \
             --base master
-          
-          # Comment on issue
-          PR_URL=$(gh pr view --json url -q .url)
+
+          PR_URL=$(gh pr view "${{ steps.vars.outputs.branch }}" --json url -q .url)
           gh issue comment ${{ steps.vars.outputs.issue_num }} \
             --body "✅ Pull request created: $PR_URL"
