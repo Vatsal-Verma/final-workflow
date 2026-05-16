@@ -79,11 +79,10 @@ jobs:
             exit 1
           fi
 
-          # Extract filenames from YAML
-          # Top-level image: field
-          STORY_IMAGE=$(grep -E '^image:' index.yaml | awk '{print $2}' | tr -d "'")
-          # Nested quotes[].image field (last image: occurrence, indented)
-          QUOTE_IMAGE=$(grep -E '^\s*image:' index.yaml | tail -1 | awk '{print $2}' | tr -d "'/")
+          # Extract both image filenames from YAML by order (story image first, quote image second)
+          mapfile -t IMAGES < <(grep -E 'image:' index.yaml | awk '{print $2}' | tr -d "'./")
+          STORY_IMAGE="${IMAGES[0]}"
+          QUOTE_IMAGE="${IMAGES[1]}"
 
           # Validate filenames were found
           if [ -z "$STORY_IMAGE" ] || [ -z "$QUOTE_IMAGE" ]; then
@@ -93,14 +92,11 @@ jobs:
           fi
 
           echo "Downloading story image: $STORY_IMAGE ← ${URLS[0]}"
-          curl -sL -H "Authorization: Bearer $GH_TOKEN" \
-            -o "$STORY_DIR/$STORY_IMAGE" "${URLS[0]}"
+          curl -sL -o "$STORY_DIR/$STORY_IMAGE" "${URLS[0]}"
 
           echo "Downloading quote image: $QUOTE_IMAGE ← ${URLS[1]}"
-          curl -sL -H "Authorization: Bearer $GH_TOKEN" \
-            -o "$STORY_DIR/$QUOTE_IMAGE" "${URLS[1]}"
+          curl -sL -o "$STORY_DIR/$QUOTE_IMAGE" "${URLS[1]}"
 
-          # Move YAML after images are confirmed downloaded
           mv index.yaml "$STORY_DIR/"
 
       - name: Create and push branch
