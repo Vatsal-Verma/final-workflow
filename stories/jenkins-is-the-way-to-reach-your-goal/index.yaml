@@ -1,0 +1,44 @@
+map:
+  authored_by: Jenkins
+  location: India
+  industries:
+    - Software Engineering
+  geojson: ''
+metadata:
+  title: This is ...
+  organization: Jenkins
+  industries:
+    - software
+    - hardware
+  programming_languages:
+    - java
+    - cpp
+    - python
+    - react
+    - springboot
+  platforms:
+    - docker
+    - kubernetes
+  version_control_systems:
+    - git
+    - github
+    - gitlab
+  build_tools:
+    - maven
+    - groovy
+  community_supports:
+    - jenkins io webiste
+    - blogs
+body_content:
+  title: Jenkins is the way to achieve something
+  paragraphs: []
+title: Jenkins is the way to reach your goal
+date: '2026-05-18T14:44:22.103Z'
+authored_by: Jenkins
+image: 12.png
+tag_line: 'Jenkins is the way '
+quotes:
+  - from: 'Jenkins '
+    content: Jenkins is everything
+    image: ./14.png
+
